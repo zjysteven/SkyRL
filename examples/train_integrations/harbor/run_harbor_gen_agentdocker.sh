@@ -1,39 +1,40 @@
 source /scratch/jingyang/skyrl_venv_docker_test/bin/activate
+export PATH="/home/jingyang/.local/bin:$PATH"
 
 set -ex
 
-# wandb api key.
-# export WANDB_API_KEY=YOUR_KEY_HERE
-
-# Pick the sandbox provider and provide the credentials.
-# export DAYTONA_API_KEY=YOUR_KEY_HERE
-# export MODAL_TOKEN_ID=YOUR_KEY_HERE
-# export MODAL_TOKEN_SECRET=YOUR_KEY_HERE
-
-# Prepare dataset first (downloads from HuggingFace and extracts tasks):
-# uv run examples/train_integrations/harbor/prepare_harbor_dataset.py --dataset open-thoughts/CodeContests
+# ============================================================================
+# Quick rollout test with agentdocker-lite (generation only, no training)
+#
+# Use this to validate the integration works before running full training.
+# Compare timing output against run_harbor_gen.sh (Docker baseline).
+# ============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 DATA_DIR="$SCRIPT_DIR/data/harbor"
 TRAIN_DATA="['$DATA_DIR/CodeContests']"
 
 CHAT_TEMPLATE_PATH="$(dirname "$0")/../../../skyrl/train/utils/templates/qwen3_acc_thinking.jinja2"
-TRIALS_DIR="$SCRIPT_DIR/trials_run"
+TRIALS_DIR="$SCRIPT_DIR/trials_run_agentdocker"
 
 #----------------
 # Infrastructure setup
 #----------------
-NUM_GPUS=4
-ENABLE_RATE_LIMITING=true  # Enable rate/concurrency limiting for trajectory submissions
-TRAJECTORIES_PER_SECOND=5  # Maximum trajectories per second (must be >= 1.0, fractional values like 1.5 are supported). null or omit to disable rate limiting
-MAX_CONCURRENCY=16        # Maximum concurrent trial.run() calls allowed (must be >= 1). null or omit to disable concurrency limiting
+NUM_GPUS=${NUM_GPUS:-4}
+ENABLE_RATE_LIMITING=true
+TRAJECTORIES_PER_SECOND=5
+MAX_CONCURRENCY=16
+
+# agentdocker-lite environment provider
+IMPORT_PATH="examples.train_integrations.harbor.agentdocker_lite_environment:AgentDockerLiteEnvironment"
 
 uv run --active --isolated --extra fsdp --extra harbor -m examples.train_integrations.harbor.entrypoints.main_harbor_generate \
   data.train_data=$TRAIN_DATA \
   data.val_data=null \
   harbor_trial_config.trials_dir=$TRIALS_DIR \
   harbor_trial_config.trial_name="dummy" \
-  harbor_trial_config.environment.type=docker \
+  harbor_trial_config.environment.type=null \
+  harbor_trial_config.environment.import_path=$IMPORT_PATH \
   trainer.policy.model.path="Qwen/Qwen3-8B" \
   generator.inference_engine.served_model_name="Qwen3-8B" \
   generator.inference_engine.num_engines=$NUM_GPUS \
@@ -42,7 +43,6 @@ uv run --active --isolated --extra fsdp --extra harbor -m examples.train_integra
   generator.inference_engine.http_endpoint_host="127.0.0.1" \
   generator.inference_engine.http_endpoint_port=8000 \
   generator.sampling_params.max_generate_length=4096 \
-  generator.n_samples_per_prompt=4 \
   generator.inference_engine.backend=vllm \
   generator.inference_engine.run_engines_locally=true \
   generator.inference_engine.weight_sync_backend=nccl \

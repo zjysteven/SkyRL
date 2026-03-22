@@ -23,7 +23,7 @@ from .main_harbor import (
 
 
 # For debugging purposes, we only generate a few samples.
-NUM_SAMPLES_TO_TEST = 10
+NUM_SAMPLES_TO_TEST = 1
 
 
 class HarborGenerateExp(BasePPOExp):

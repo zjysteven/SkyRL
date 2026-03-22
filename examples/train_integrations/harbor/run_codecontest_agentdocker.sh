@@ -2,20 +2,21 @@ source /scratch/jingyang/skyrl_venv_docker_test/bin/activate
 
 set -ex
 
-# wandb api key.
-# export WANDB_API_KEY=YOUR_KEY_HERE
-
-# Pick the sandbox provider and provide the credentials.
-# export DAYTONA_API_KEY=YOUR_KEY_HERE
-# export MODAL_TOKEN_ID=YOUR_KEY_HERE
-# export MODAL_TOKEN_SECRET=YOUR_KEY_HERE
+# ============================================================================
+# A/B Test: agentdocker-lite vs Docker
+#
+# This script is identical to run_codecontest.sh except:
+#   1. environment.type=docker  →  environment.import_path=<agentdocker_lite_environment>
+#   2. RUN_NAME includes "-agentdocker" suffix for separate logging
+#
+# Run both scripts with the same seed/data to compare:
+#   - Loss curves (should be similar)
+#   - Rollout speed (agentdocker-lite should be significantly faster)
+# ============================================================================
 
 #-----------------------
 # Dataset setup
 #-----------------------
-# Prepare datasets first (downloads from HuggingFace and extracts tasks):
-# uv run examples/train_integrations/harbor/prepare_harbor_dataset.py --dataset open-thoughts/CodeContests
-# uv run examples/train_integrations/harbor/prepare_harbor_dataset.py --dataset open-thoughts/OpenThoughts-TB-dev
 SCRIPT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 DATA_DIR="$SCRIPT_DIR/data/harbor"
 TRAIN_DATA="['$DATA_DIR/CodeContests']"
@@ -24,7 +25,7 @@ EVAL_DATA="['$DATA_DIR/OpenThoughts-TB-dev']"
 #-----------------------
 # Directory setup
 #-----------------------
-RUN_NAME="codecontest"
+RUN_NAME="codecontest-agentdocker"
 TRIALS_DIR="$SCRIPT_DIR/$RUN_NAME/trials_run"
 CKPTS_DIR="$SCRIPT_DIR/$RUN_NAME/ckpts"
 EXPORTS_DIR="$SCRIPT_DIR/$RUN_NAME/exports"
@@ -42,25 +43,28 @@ LOSS_REDUCTION="seq_mean_token_sum_norm"
 GRPO_NORM_BY_STD=false
 USE_KL_LOSS=false
 
-# Essentially achieves interleaved thinking and hence on-policy training without step-wise training.
 CHAT_TEMPLATE_PATH="$(dirname "$0")/../../../skyrl/train/utils/templates/qwen3_acc_thinking.jinja2"
 
 #----------------
 # Infrastructure setup
 #----------------
 NUM_GPUS=4
-ENABLE_RATE_LIMITING=true  # Enable rate/concurrency limiting for trajectory submissions
-TRAJECTORIES_PER_SECOND=5  # Maximum trajectories per second (must be >= 1.0, fractional values like 1.5 are supported). null or omit to disable rate limiting
-MAX_CONCURRENCY=512        # Maximum concurrent trial.run() calls allowed (must be >= 1). null or omit to disable concurrency limiting
+ENABLE_RATE_LIMITING=true
+TRAJECTORIES_PER_SECOND=5
+MAX_CONCURRENCY=512
 
-# Run SkyRL command
+# agentdocker-lite environment provider
+IMPORT_PATH="examples.train_integrations.harbor.agentdocker_lite_environment:AgentDockerLiteEnvironment"
+
+# Run SkyRL command — note: import_path instead of type=docker
 uv run --active --isolated --extra fsdp --extra harbor -m examples.train_integrations.harbor.entrypoints.main_harbor \
   data.train_data=$TRAIN_DATA \
   data.val_data=$EVAL_DATA \
   trainer.policy.model.path=Qwen/Qwen3-8B \
   generator.inference_engine.served_model_name=Qwen3-8B \
   harbor_trial_config.trials_dir=$TRIALS_DIR \
-  harbor_trial_config.environment.type=docker \
+  harbor_trial_config.environment.type=null \
+  harbor_trial_config.environment.import_path=$IMPORT_PATH \
   trainer.export_path=$EXPORTS_DIR \
   trainer.ckpt_path=$CKPTS_DIR \
   trainer.log_path=$LOG_DIR \

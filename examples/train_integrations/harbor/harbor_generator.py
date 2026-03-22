@@ -238,6 +238,9 @@ class HarborGenerator(GeneratorInterface):
                 config = deepcopy(self._harbor_trial_config_template)
                 config["task"] = {"path": prompt}
                 config["agent"]["kwargs"]["session_id"] = uuid4().hex
+                # Use a unique trial_name per trial to avoid docker compose
+                # project name collisions when running concurrent trials.
+                config["trial_name"] = f"{config['trial_name']}_{uuid4().hex[:12]}"
                 trial_config = TrialConfig.model_validate(config)
                 trial = Trial(trial_config)
 
